@@ -7,7 +7,7 @@
 //| a Close All button to close all open positions.                  |
 //+------------------------------------------------------------------+
 #property copyright "ChatGPT and Googling"
-#property version "1.00"
+#property version "1.9"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -15,19 +15,14 @@
 CTrade trade;
 
 //--- input parameters
-input ENUM_TIMEFRAMES TimeFrame = PERIOD_H1;
-input uint NumberOfBar = 1;
-input double cRiskReward = 2;
-input int StopPips = 20; // distance for pending orders (pips)
-input double Lots = 0.01; // default lot size
-input int SlPips = 50; // default stop loss (pips)
-input int TpPips = 100; // default take profit (pips)
+input ENUM_TIMEFRAMES TimeFrame = PERIOD_H1; // Time Frame use for Bar
+input uint NumberOfBar = 1; // Number or Candle (1 = Last Candle)
+input double cRiskReward = 2; // Risk Reward Ratio
+input double Lots = 0.01; // Lot Size
 input int ButtonX = 10; // X offset for first button (pixels)
 input int ButtonY = 30; // Y offset (pixels)
 input int ButtonW = 90; // button width
 input int ButtonH = 24; // button height
-
-double cOpen, cClose, cHigh, cLow, cSLPips, cTPPips;
 
 //--- object names
 string BTN_BUY = "btn_buy_stop";
@@ -97,18 +92,14 @@ void PlaceBuyStop() {
 
    double digits = (double) SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
 
-   cOpen = iOpen(NULL, TimeFrame, NumberOfBar);
-   cClose = iClose(NULL, TimeFrame, NumberOfBar);
-   cHigh = iHigh(NULL, TimeFrame, NumberOfBar);
-   cLow = iLow(NULL, TimeFrame, NumberOfBar);
-   
-   cSLPips = NormalizeDouble(cHigh - cLow, (int) digits);
-   cTPPips = cSLPips * cRiskReward;
-   
-   // place a buy stop at Ask + StopPips
-   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double price = cHigh; // multiply by 10 for pip -> point on some FX pairs
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+   double cHigh = iHigh(_Symbol, TimeFrame, NumberOfBar);
+   double cLow = iLow(_Symbol, TimeFrame, NumberOfBar);
+
+   double cSLPips = NormalizeDouble(cHigh - cLow, (int) digits);
+   double cTPPips = cSLPips * cRiskReward;
 
    MqlTradeRequest request;
    MqlTradeResult result;
@@ -119,14 +110,14 @@ void PlaceBuyStop() {
    request.symbol = _Symbol;
    request.volume = Lots;
    request.type = ORDER_TYPE_BUY_STOP;
-   request.price = price;
+   request.price = cHigh + (ask - bid);
    request.deviation = 10;
    request.type_filling = ORDER_FILLING_RETURN;
    request.type_time = ORDER_TIME_GTC;
 
    // stoploss and takeprofit in price terms
-   double sl = price - cSLPips;
-   double tp = price + cTPPips;
+   double sl = cLow - (ask - bid);
+   double tp = cHigh + cTPPips + ((ask - bid) * 2);
    request.sl = NormalizeDouble(sl, (int) digits);
    request.tp = NormalizeDouble(tp, (int) digits);
 
@@ -139,10 +130,17 @@ void PlaceBuyStop() {
 
 //+------------------------------------------------------------------+
 void PlaceSellStop() {
-   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+
    double digits = (double) SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double price = NormalizeDouble(bid - StopPips * point * 10, (int) digits);
+
+   double cHigh = iHigh(_Symbol, TimeFrame, NumberOfBar);
+   double cLow = iLow(_Symbol, TimeFrame, NumberOfBar);
+
+   double cSLPips = NormalizeDouble(cHigh - cLow, (int) digits);
+   double cTPPips = cSLPips * cRiskReward;
 
    MqlTradeRequest request;
    MqlTradeResult result;
@@ -153,13 +151,13 @@ void PlaceSellStop() {
    request.symbol = _Symbol;
    request.volume = Lots;
    request.type = ORDER_TYPE_SELL_STOP;
-   request.price = price;
+   request.price = cLow - (ask - bid);
    request.deviation = 10;
    request.type_filling = ORDER_FILLING_RETURN;
    request.type_time = ORDER_TIME_GTC;
 
-   double sl = price + SlPips * point * 10;
-   double tp = price - TpPips * point * 10;
+   double sl = cHigh + (ask - bid);
+   double tp = cLow - cTPPips - ((ask - bid) * 2);
    request.sl = NormalizeDouble(sl, (int) digits);
    request.tp = NormalizeDouble(tp, (int) digits);
 
