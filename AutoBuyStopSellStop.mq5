@@ -13,12 +13,12 @@
 CTrade trade;
 
 //--- user inputs
-input int HourToPlace = 10; // Hour (server time) to place pending orders
-input int MinuteToPlace = 01; // Minute at that hour
-input int SL_Pips = 15; // Stop Loss in pips
-input int TP_Pips = 30; // Take Profit in pips
-input int EntryOffset_Pips = 5; // Distance from current price to set pending order (in pips)
+input ENUM_TIMEFRAMES TimeFrame = PERIOD_H1; // Time Frame use for Bar
+input uint NumberOfBar = 1; // Number or Candle (1 = Last Candle)
+input int HourToPlace = 8; // Hour (server time) to place pending orders
+input int MinuteToPlace = 2; // Minute at that hour
 input double Lots = 0.1; // Lot size
+input double cRiskReward = 3; // Risk Reward Ratio
 
 //--- internal
 datetime last_placed_day = 0; // day when orders were placed (midnight timestamp)
@@ -48,16 +48,22 @@ void OnTick() {
    dt_mid.min = 0;
    dt_mid.sec = 0;
    datetime today_midnight = StructToTime(dt_mid);
+   
+   CloseAllPendingOrders();
 
    // only once per day
    if (today_midnight == last_placed_day) return;
 
    // check if it's the configured time (only trigger during that minute)
    if (dt.hour == HourToPlace && dt.min == MinuteToPlace) {
-      // close all order position, if there are position
+   
       CloseAllPositions();
-      // place orders
-      bool ok = PlaceDailyPendingOrders();
+      
+      PlaceBuyStop();
+   
+      PlaceSellStop();
+      
+      bool ok = true;
       if (ok) {
          last_placed_day = today_midnight;
          Print("Pending orders placed for ", TimeToString(now, TIME_DATE | TIME_MINUTES));
@@ -65,91 +71,6 @@ void OnTick() {
          Print("Failed to place some pending orders at ", TimeToString(now, TIME_DATE | TIME_MINUTES));
       }
    }
-}
-
-//+------------------------------------------------------------------+
-bool PlaceDailyPendingOrders() {
-   string symbol = _Symbol;
-
-   // get current prices
-   double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
-   if (ask == 0 || bid == 0) {
-      Print("Error getting market prices for ", symbol);
-      return (false);
-   }
-
-   // point and pip handling
-   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-   double pip = point * 10.0; // typical pip = 10 * point for FX symbols with 5/3 digits
-   if (pip <= 0) pip = point; // fallback
-
-   double entry_offset = EntryOffset_Pips * pip;
-   double sl_distance = SL_Pips * pip;
-   double tp_distance = TP_Pips * pip;
-
-   // calculate buy stop price (above ask)
-   double buy_entry = NormalizeDouble(ask + entry_offset, (int) SymbolInfoInteger(symbol, SYMBOL_DIGITS));
-   double buy_sl = NormalizeDouble(buy_entry - sl_distance, (int) SymbolInfoInteger(symbol, SYMBOL_DIGITS));
-   double buy_tp = NormalizeDouble(buy_entry + tp_distance, (int) SymbolInfoInteger(symbol, SYMBOL_DIGITS));
-
-   // calculate sell stop price (below bid)
-   double sell_entry = NormalizeDouble(bid - entry_offset, (int) SymbolInfoInteger(symbol, SYMBOL_DIGITS));
-   double sell_sl = NormalizeDouble(sell_entry + sl_distance, (int) SymbolInfoInteger(symbol, SYMBOL_DIGITS));
-   double sell_tp = NormalizeDouble(sell_entry - tp_distance, (int) SymbolInfoInteger(symbol, SYMBOL_DIGITS));
-
-   // remove existing pending orders placed by this EA for the same symbol (OPTIONAL)
-   CancelExistingDailyPendings();
-
-   bool all_ok = true;
-
-   // prepare and send BUY_STOP pending order
-   MqlTradeRequest req;
-   MqlTradeResult res;
-   ZeroMemory(req);
-   ZeroMemory(res);
-
-   req.action = TRADE_ACTION_PENDING;
-   req.symbol = symbol;
-   req.volume = Lots;
-   req.type = ORDER_TYPE_BUY_STOP;
-   req.price = buy_entry;
-   req.sl = buy_sl;
-   req.tp = buy_tp;
-   req.deviation = 10; // max slippage in points
-   req.type_filling = ORDER_FILLING_RETURN;
-   req.type_time = ORDER_TIME_GTC; // keep until cancelled
-
-   if (!SendOrderCustom(req, res)) {
-      PrintFormat("OrderSend BUY_STOP failed. retcode=%d comment=%s", res.retcode, res.comment);
-      all_ok = false;
-   } else {
-      PrintFormat("BUY_STOP placed at %G SL=%G TP=%G ticket=%I64d", buy_entry, buy_sl, buy_tp, res.order);
-   }
-
-   // prepare and send SELL_STOP pending order
-   ZeroMemory(req);
-   ZeroMemory(res);
-
-   req.action = TRADE_ACTION_PENDING;
-   req.symbol = symbol;
-   req.volume = Lots;
-   req.type = ORDER_TYPE_SELL_STOP;
-   req.price = sell_entry;
-   req.sl = sell_sl;
-   req.tp = sell_tp;
-   req.deviation = 10;
-   req.type_filling = ORDER_FILLING_RETURN;
-   req.type_time = ORDER_TIME_GTC;
-
-   if (!OrderSend(req, res)) {
-      PrintFormat("OrderSend SELL_STOP failed. retcode=%d comment=%s", res.retcode, res.comment);
-      all_ok = false;
-   } else {
-      PrintFormat("SELL_STOP placed at %G SL=%G TP=%G ticket=%I64d", sell_entry, sell_sl, sell_tp, res.order);
-   }
-
-   return (all_ok);
 }
 
 //+------------------------------------------------------------------+
@@ -180,17 +101,84 @@ void CancelExistingDailyPendings() {
 }
 
 //+------------------------------------------------------------------+
-// helper: wrapper for OrderSend to cope with platform differences
-bool SendOrderCustom(MqlTradeRequest & request, MqlTradeResult & result) {
-   if (!::OrderSend(request, result)) {
-      return (false);
+void PlaceBuyStop() {
+
+   double digits = (double) SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+   double cHigh = iHigh(_Symbol, TimeFrame, NumberOfBar);
+   double cLow = iLow(_Symbol, TimeFrame, NumberOfBar);
+
+   double cSLPips = NormalizeDouble(cHigh - cLow, (int) digits);
+   double cTPPips = cSLPips * cRiskReward;
+
+   MqlTradeRequest request;
+   MqlTradeResult result;
+   ZeroMemory(request);
+   ZeroMemory(result);
+
+   request.action = TRADE_ACTION_PENDING;
+   request.symbol = _Symbol;
+   request.volume = Lots;
+   request.type = ORDER_TYPE_BUY_STOP;
+   request.price = cHigh + (ask - bid);
+   request.deviation = 10;
+   request.type_filling = ORDER_FILLING_RETURN;
+   request.type_time = ORDER_TIME_GTC;
+
+   // stoploss and takeprofit in price terms
+   double sl = cLow - (ask - bid);
+   double tp = cHigh + cTPPips + ((ask - bid) * 2);
+   request.sl = NormalizeDouble(sl, (int) digits);
+   request.tp = NormalizeDouble(tp, (int) digits);
+
+   if (!OrderSend(request, result)) {
+      PrintFormat("BuyStop send failed: ret=%d, comment=%s", result.retcode, result.comment);
+   } else {
+      PrintFormat("BuyStop placed @%G ticket=%I64u", request.price, result.order);
    }
-   if (result.retcode == 10009 || result.retcode == 10004 || result.retcode == 10006 ||
-      result.retcode == 10002 || result.retcode == 10008) {
-      return (true);
+}
+
+//+------------------------------------------------------------------+
+void PlaceSellStop() {
+
+   double digits = (double) SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+   double cHigh = iHigh(_Symbol, TimeFrame, NumberOfBar);
+   double cLow = iLow(_Symbol, TimeFrame, NumberOfBar);
+
+   double cSLPips = NormalizeDouble(cHigh - cLow, (int) digits);
+   double cTPPips = cSLPips * cRiskReward;
+
+   MqlTradeRequest request;
+   MqlTradeResult result;
+   ZeroMemory(request);
+   ZeroMemory(result);
+
+   request.action = TRADE_ACTION_PENDING;
+   request.symbol = _Symbol;
+   request.volume = Lots;
+   request.type = ORDER_TYPE_SELL_STOP;
+   request.price = cLow - (ask - bid);
+   request.deviation = 10;
+   request.type_filling = ORDER_FILLING_RETURN;
+   request.type_time = ORDER_TIME_GTC;
+
+   double sl = cHigh + (ask - bid);
+   double tp = cLow - cTPPips - ((ask - bid) * 2);
+   request.sl = NormalizeDouble(sl, (int) digits);
+   request.tp = NormalizeDouble(tp, (int) digits);
+
+   if (!OrderSend(request, result)) {
+      PrintFormat("SellStop send failed: ret=%d, comment=%s", result.retcode, result.comment);
+   } else {
+      PrintFormat("SellStop placed @%G ticket=%I64u", request.price, result.order);
    }
-   if (result.order > 0) return (true);
-   return (false);
 }
 
 void CloseAllPositions() {
@@ -219,6 +207,29 @@ void CloseAllPositions() {
       if (m_position.SelectByIndex(i)) // select a position
    {
       m_trade.PositionClose(m_position.Ticket()); // then close it --period
+      Sleep(100); // Relax for 100 ms
+   }
+   //--End Đóng Positions lần 2 cho chắc
+} // End func Close_all
+//+------------------------------------------------------------------+
+
+void CloseAllPendingOrders() {
+   CTrade m_trade; // Trades Info and Executions library
+   COrderInfo m_order; //Library for Orders information
+   CPositionInfo m_position; // Library for all position features and information
+   
+   //--End Đóng Orders
+   //--Đóng Positions lần 2 cho chắc
+   for (int i = PositionsTotal() - 1; i >= 0; i--) // loop all Open Positions
+      if (m_position.SelectByIndex(i)) // select a position
+   {
+      //--Đóng Orders
+      for (int i = OrdersTotal() - 1; i >= 0; i--) // loop all Orders
+         if (m_order.SelectByIndex(i)) // select an order
+      {
+         m_trade.OrderDelete(m_order.Ticket()); // then delete it --period
+         Sleep(100); // Relax for 100 ms
+      }
       Sleep(100); // Relax for 100 ms
    }
    //--End Đóng Positions lần 2 cho chắc
