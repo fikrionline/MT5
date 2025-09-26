@@ -5,10 +5,11 @@
 #property indicator_chart_window
 #property indicator_plots 0 // No plots, only objects
 
-input int DaysBack = 5; // Number of Days to Draw
+input int DaysBack = 2;
+input color FiboHLineColor = clrDarkGreen;   // Horizontal Line Color
 input int DaySkip1 = 3; // Skip Day 1
 input int DaySkip2 = 4; // Skip Day 2
-input color FiboColor = clrDodgerBlue; // Line Color
+input color FiboColor = clrDimGray; // Fibo Color
 input int FiboWidth = 1; // Line With
 input int FiboStyle = STYLE_SOLID; // Line Style
 input ENUM_TIMEFRAMES FiboTF = PERIOD_H1; // Time Frame
@@ -92,6 +93,8 @@ int OnCalculate(const int rates_total,
          //--- create/update fibo object
          if (ObjectFind(0, fiboNameShift) < 0) {
             ObjectCreate(0, fiboNameShift, OBJ_FIBO, 0, day_start, highestOpen, day_end, lowestOpen);
+            ObjectSetInteger(0, fiboNameShift, OBJPROP_LEVELCOLOR, 0, FiboHLineColor);
+            ObjectSetInteger(0, fiboNameShift, OBJPROP_LEVELCOLOR, 1, FiboHLineColor);
             ObjectSetInteger(0, fiboNameShift, OBJPROP_COLOR, FiboColor);
             ObjectSetInteger(0, fiboNameShift, OBJPROP_STYLE, FiboStyle);
             ObjectSetInteger(0, fiboNameShift, OBJPROP_WIDTH, FiboWidth);
@@ -101,10 +104,10 @@ int OnCalculate(const int rates_total,
             ObjectSetInteger(0, fiboNameShift, OBJPROP_LEVELS, 2);
 
             ObjectSetDouble(0, fiboNameShift, OBJPROP_LEVELVALUE, 0, 0.0);
-            ObjectSetString(0, fiboNameShift, OBJPROP_LEVELTEXT, 0, "L" + IntegerToString(d) + " = %$");
+            ObjectSetString(0, fiboNameShift, OBJPROP_LEVELTEXT, 0, "L" + IntegerToString(d) + " = %$  ");
 
             ObjectSetDouble(0, fiboNameShift, OBJPROP_LEVELVALUE, 1, 1.0);
-            ObjectSetString(0, fiboNameShift, OBJPROP_LEVELTEXT, 1, "H" + IntegerToString(d) + " = %$");
+            ObjectSetString(0, fiboNameShift, OBJPROP_LEVELTEXT, 1, "H" + IntegerToString(d) + " = %$  ");
          } else {
             // update anchors if already created
             ObjectMove(0, fiboNameShift, 0, day_start, highestOpen);
