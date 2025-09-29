@@ -114,7 +114,7 @@ int OnCalculate(const int rates_total,
    }
 
    sTime = TimeToString(leftTime, TIME_SECONDS);
-   if (DayOfWeek() == 0 || DayOfWeek() == 6) {
+   if (DayOfWeek() == 8 || DayOfWeek() == 9) {
       if (location == 0) {
          Comment("CCTR: " + "Market Is Closed");
       } else {
