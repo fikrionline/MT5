@@ -7,8 +7,8 @@
 
 input int DaysBack = 2;
 input color FiboHLineColor = clrDarkGreen;   // Horizontal Line Color
-input int DaySkip1 = 3; // Skip Day 1
-input int DaySkip2 = 4; // Skip Day 2
+input int DaySkip1 = 6; // Skip Day 1
+input int DaySkip2 = 7; // Skip Day 2
 input color FiboColor = clrDimGray; // Fibo Color
 input int FiboWidth = 1; // Line With
 input int FiboStyle = STYLE_SOLID; // Line Style
