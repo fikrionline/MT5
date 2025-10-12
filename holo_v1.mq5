@@ -17,8 +17,8 @@ input int      InpNYStartHour      = 12;           // New York session start hou
 input int      InpNYEndHour        = 21;           // New York session end hour (server time)
 input ulong    InpBuyMagic         = 123456;       // Magic number for buy orders
 input ulong    InpSellMagic        = 654321;       // Magic number for sell orders
-input int      InpTrailingPoints   = 200000;          // Trailing stop in points
-input int      InpMinDistanceToSL  = 50;           // Minimum distance to SL in points to allow trade
+input int      InpTrailingPoints   = 100;          // Trailing stop in points
+input int      InpMinDistanceToSL  = 10;           // Minimum distance to SL in points to allow trade
 input string   InpComment          = "HOLO";
 
 CTrade         trade;
