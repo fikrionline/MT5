@@ -17,8 +17,8 @@ input int      InpNYStartHour      = 12;           // New York session start hou
 input int      InpNYEndHour        = 21;           // New York session end hour (server time)
 input ulong    InpBuyMagic         = 123456;       // Magic number for buy orders
 input ulong    InpSellMagic        = 654321;       // Magic number for sell orders
-input int      InpTrailingPoints   = 100;          // Trailing stop in points
-input int      InpMinDistanceToSL  = 10;           // Minimum distance to SL in points to allow trade
+input int      InpTrailingPoints   = 500;          // Trailing stop in points
+input int      InpMinDistanceToSL  = 100;          // Minimum distance to SL in points to allow trade
 input string   InpComment          = "HOLO";
 
 CTrade         trade;
@@ -236,7 +236,9 @@ void DoTrailing() {
          if (desiredSL < sl || sl == 0.0) // for sells sl is above - move down (toward profit) if lower
          {
             // make sure we don't move SL below open price (for sell open price is higher than current)
-            if (desiredSL < PositionGetDouble(POSITION_PRICE_OPEN)) newSL = desiredSL;
+            if (desiredSL < PositionGetDouble(POSITION_PRICE_OPEN)) {
+               newSL = desiredSL;
+            }
          }
       }
 
